@@ -1,0 +1,16 @@
+opam-version: "1.2"
+name: "opam-ed"
+version: "0.1"
+maintainer: "Louis Gesbert <louis.gesbert@ocamlpro.com>"
+authors: "Louis Gesbert <louis.gesbert@ocamlpro.com>"
+license: "GPL-2.1 with OCaml linking exception"
+homepage: "https://github.com/AltGr/opam-ed"
+bug-reports: "https://github.com/AltGr/opam-ed/issues"
+depends: [
+  "ocamlfind"
+  "cmdliner"
+  "opam-file-format"
+]
+available: ocaml-version >= "4.03.0"
+build: make
+dev-repo: "git+https://github.com/AltGr/opam-ed.git"
