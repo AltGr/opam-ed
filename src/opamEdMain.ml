@@ -42,6 +42,10 @@ open Cmdliner
 type path = string list
 type shell_command = string
 
+let fatal_exn = function
+  | Sys.Break as e -> raise e
+  | _ -> ()
+
 let string_cut c s =
   try
     let i = String.index s c in
@@ -187,14 +191,16 @@ let arg_inplace =
   in
   Arg.(value & flag & info ~doc ["inplace"; "i"])
 
-(*
 let arg_normalise =
-  let doc =
-    "Output the file normalised, without preserving any comments or \
-     formatting."
-  in
-  Arg.(value & flag & info ~doc ["normalise"; "n"])
-*)
+  Arg.(value & vflag `Preserve [
+      `Preserve, info ["preserve"] ~doc:
+        "Preserve the formatting of unchanged parts of the file.";
+      `Reformat, info ["reformat"] ~doc:
+        "Reformat the file contents when printing. This discards comments.";
+      `Canonical, info ["canonical"] ~doc:
+        "Output the file in canonical format (ordered fields, minimal \
+         formatting), for reproducible signatures."
+    ])
 
 let arg_commands =
   let doc = "Specify the commands to process" in
@@ -213,6 +219,7 @@ let string_of_channel ic =
 let shell_command cmd text =
   let ic, oc as process = Unix.open_process cmd in
   output_string oc text;
+  close_out oc;
   let s = string_of_channel ic in
   match Unix.close_process process with
   | Unix.WEXITED 0 -> Some s
@@ -281,9 +288,16 @@ let get_list = function
   | List (_, l) -> l
   | elt -> [elt]
 
-let list = function
+let list ?(pos=pos_null) = function
   | [] -> None
-  | its -> Some (List (pos_null, its))
+  | its -> Some (List (pos, its))
+
+let map_list f = function
+  | List (pos, l) -> list ~pos (f l)
+  | elt ->
+    match f [elt] with
+    | [e] -> Some e
+    | l -> list l
 
 let singleton x = List (pos_null, [x])
 
@@ -330,36 +344,32 @@ let exec_command f cmd =
       map_path (fun _ -> Some v) path contents
     | Append (path, v) ->
       map_path ~absent:(fun () -> singleton v)
-        (fun x -> list (get_list x @ [v]))
+        (map_list (fun l -> l @ [v]))
         path contents
     | Prepend (path, v) ->
       map_path ~absent:(fun () -> singleton v)
-        (fun x -> list (v :: get_list x))
+        (map_list (fun l -> v :: l))
         path contents
     | Map (path, cmd) ->
-      map_path (fun x ->
-          get_list x |>
-          List.map (fun v ->
-              let s = OpamPrinter.value v in
-              match shell_command cmd s with
-              | None ->
-                Printf.eprintf "Error while running command %S on %S\n" cmd s;
-                v
-              | Some s ->
-                try OpamParser.value_of_string s
-                with Parsing.Parse_error ->
-                  Printf.eprintf
-                    "Error: command %S returned %S, which doesn't parse\n"
-                    cmd s;
-                  v) |>
-          list)
+      map_path
+        (map_list @@ List.map @@ fun v ->
+         let s = OpamPrinter.value v in
+         match shell_command cmd s with
+         | None ->
+           Printf.eprintf "Error while running command %S on %S\n" cmd s;
+           v
+         | Some s ->
+           try OpamParser.value_of_string s
+           with Parsing.Parse_error ->
+             Printf.eprintf
+               "Error: command %S returned %S, which doesn't parse\n"
+               cmd s;
+             v)
         path contents
     | Filter (path, cmd) ->
-      map_path (fun x ->
-          get_list x |>
-          List.filter
-            (fun v -> shell_command cmd (OpamPrinter.value v) <> None) |>
-          list)
+      map_path
+        (map_list @@ List.filter @@ fun v ->
+         shell_command cmd (OpamPrinter.value v) <> None)
         path contents
     | Replace_item (path, v1, v2) ->
       let rec repl = function
@@ -367,38 +377,105 @@ let exec_command f cmd =
         | x::r when x = v1 -> v2 :: r
         | x::r -> x :: repl r
       in
-      map_path (fun x -> list (repl (get_list x)))
-        path contents
+      map_path (map_list repl) path contents
     | Add_replace_item (path, v1, v2) ->
       let rec repl = function
         | [] -> [v2]
         | x::r when x = v1 -> v2 :: r
         | x::r -> x :: repl r
       in
-      map_path (fun x -> list (repl (get_list x)))
-        path contents
+      map_path (map_list repl) path contents
     | Remove_item (path, v) ->
       let rec rem = function
         | [] -> []
         | x::r when x = v -> r
         | x::r -> x :: rem r
       in
-      map_path (fun x -> list (rem (get_list x)))
-        path contents
+      map_path (map_list rem) path contents
   in
   {f with file_contents = contents}
 
-let run files inplace (*normalise*) commands =
+let print_preserved txt orig f =
+  let pos_index =
+    let lines_index =
+      let rec aux acc s =
+        let until =
+          try Some (String.index_from s (List.hd acc) '\n')
+          with Not_found -> None
+        in
+        match until with
+        | Some until -> aux (until+1 :: acc) s
+        | None -> Array.of_list (List.rev acc)
+      in
+      aux [0] txt
+    in
+    fun (_file, li, col) -> lines_index.(li - 1) + col
+  in
+  let get_substring start_pos rest =
+    let start = pos_index start_pos in
+    let stop = match rest with
+      | (Section (pos,_) | Variable (pos,_,_)) :: _ -> pos_index pos - 1
+      | [] ->
+        let len = ref (String.length txt) in
+        while !len >= 1 && txt.[!len - 1] = '\n' do decr len done;
+        !len
+    in
+    String.sub txt start (stop - start)
+  in
+  let list_take f l =
+    let rec aux acc = function
+    | [] -> None, List.rev acc
+    | x::r ->
+      if f x then Some x, List.rev_append acc r
+      else aux (x::acc) r
+    in
+    aux [] l
+  in
+  let is_variable name = function
+    | Variable (_, name1, v1) -> name = name1
+    | _ -> false
+  in
+  let is_section name = function
+    | Section (_, {section_kind; _}) -> name = section_kind
+    | _ -> false
+  in
+  let rec aux acc f = function
+    | Variable (pos, name, v) :: r ->
+      (match list_take (is_variable name) f with
+       | Some (Variable (_, _, v1)), f when v = v1 ->
+         aux (get_substring pos r :: acc) f r
+       | Some item, f ->
+         aux (OpamPrinter.items [item] :: acc) f r
+       | None, f ->
+         aux acc f r)
+    | Section (pos, sec) :: r ->
+      (match list_take (is_section sec.section_kind) f with
+       | Some (Section (_, sec1)), f when sec = sec1 ->
+         aux (get_substring pos r :: acc) f r
+       | Some item, f ->
+         aux (OpamPrinter.items [item] :: acc) f r
+       | None, f -> aux acc f r)
+    | [] ->
+      List.rev_append acc [OpamPrinter.items f]
+  in
+  String.concat "\n" (aux [get_substring ("",1,0) orig] f orig) ^ "\n"
+
+let run files inplace normalise commands =
+  let print txt orig f =
+    match normalise with
+    | `Preserve -> print_preserved txt orig.file_contents f.file_contents
+    | `Reformat -> OpamPrinter.opamfile f ^ "\n"
+    | `Canonical -> OpamPrinter.Normalise.opamfile f
+  in
   if files = [] then
     try
-      let f =
-        try OpamParser.channel stdin "/dev/stdin"
-        with Sys_error _ -> { file_contents = []; file_name = "<none>" }
-      in
-      let f = List.fold_left exec_command f commands in
+      let txt = try string_of_channel stdin with Sys_error _ -> "" in
+      let orig = OpamParser.string txt "/dev/stdin" in
+      let f = List.fold_left exec_command orig commands in
       if commands = [] || List.exists is_edition_command commands then
-        print_endline (OpamPrinter.opamfile f)
+        print_string (print txt orig f)
     with e ->
+      fatal_exn e;
       Printf.eprintf "Error on input from stdin: %s\n"
         (Printexc.to_string e);
       exit 10
@@ -406,21 +483,27 @@ let run files inplace (*normalise*) commands =
   let ok =
     List.fold_left (fun ok file ->
         try
-          let f = OpamParser.file file in
-          let f = List.fold_left exec_command f commands in
-          let s = OpamPrinter.opamfile f in (* This normalises *)
+          let txt =
+            let ic = open_in file in
+            try
+              let s = string_of_channel ic in
+              close_in ic; s
+            with e -> close_in ic; raise e
+          in
+          let orig = OpamParser.string txt file in
+          let f = List.fold_left exec_command orig commands in
+          let s = print txt orig f in
           if inplace then
             let oc = open_out file in
             output_string oc s;
-            output_string stdout "\n";
             close_out oc;
             ok
           else
             (output_string stdout s;
-             output_string stdout "\n";
              flush stdout;
              ok)
         with e ->
+          fatal_exn e;
           Printf.eprintf "Error on file %s: %s\n" file
             (Printexc.to_string e);
           false
@@ -429,7 +512,7 @@ let run files inplace (*normalise*) commands =
   if not ok then exit 10
 
 let cmd =
-  Term.(pure run $ arg_files $ arg_inplace $ (*arg_normalise $*) arg_commands)
+  Term.(pure run $ arg_files $ arg_inplace $ arg_normalise $ arg_commands)
 
 let man = [
   `S "ARGUMENTS";
