@@ -391,7 +391,10 @@ let exec_command f cmd =
 let run files inplace (*normalise*) commands =
   if files = [] then
     try
-      let f = OpamParser.channel stdin "/dev/stdin" in
+      let f =
+        try OpamParser.channel stdin "/dev/stdin"
+        with Sys_error _ -> { file_contents = []; file_name = "<none>" }
+      in
       let f = List.fold_left exec_command f commands in
       if commands = [] || List.exists is_edition_command commands then
         print_endline (OpamPrinter.opamfile f)
