@@ -39,8 +39,7 @@ open Cmdliner
     --normalise -n
 *)
 
-type section = string
-type field = string list
+type path = string list
 type shell_command = string
 
 let string_cut c s =
@@ -55,30 +54,28 @@ let rec string_split c s =
   | s, None -> [s]
   | s, Some s' -> s :: string_split c s'
 
-let field_of_string s = string_split '.' s
-let string_of_field f = String.concat "." f
-let section_of_string s = s
-let string_of_section sec = sec
+let path_of_string s = string_split '.' s
+let string_of_path f = String.concat "." f
 let shell_command_of_string s = s
 let string_of_shell_command c = c
 
 type command =
   (* extraction commands *)
-  | Get of field
+  | Get of path
   | Field_list
-  | Field_items of field
-  | Get_section of section
+  | Field_items of path
+  | Get_section of path
   (* edition commands *)
-  | Add of field * value
-  | Remove of field
-  | Replace of field * value
-  | Append of field * value
-  | Prepend of field * value
-  | Map of field * shell_command
-  | Filter of field * shell_command
-  | Replace_item of field * value * value
-  | Add_replace_item of field * value * value
-  | Remove_item of field * value
+  | Add of path * value
+  | Remove of path
+  | Replace of path * value
+  | Append of path * value
+  | Prepend of path * value
+  | Map of path * shell_command
+  | Filter of path * shell_command
+  | Replace_item of path * value * value
+  | Add_replace_item of path * value * value
+  | Remove_item of path * value
 
 let command_of_string s =
   let value_of_strings ss =
@@ -94,43 +91,43 @@ let command_of_string s =
   in
   match string_split ' ' s with
   | "get" :: f :: r -> check_empty r;
-    Get (field_of_string f)
+    Get (path_of_string f)
   | "field-list" :: r -> check_empty r;
     Field_list
   | "field-items" :: f :: r -> check_empty r;
-    Field_items (field_of_string f)
+    Field_items (path_of_string f)
   | "get-section" :: sec :: r -> check_empty r;
-    Get_section (section_of_string sec)
+    Get_section (path_of_string sec)
   | "add" :: f :: v ->
-    Add (field_of_string f, value_of_strings v)
+    Add (path_of_string f, value_of_strings v)
   | "remove" :: s :: r -> check_empty r;
-    Remove (field_of_string s)
+    Remove (path_of_string s)
   | "replace" :: s :: v ->
-    Replace (field_of_string s, value_of_strings v)
+    Replace (path_of_string s, value_of_strings v)
   | "append" :: s :: v ->
-    Append (field_of_string s, value_of_strings v)
+    Append (path_of_string s, value_of_strings v)
   | "prepend":: s :: v ->
-    Prepend (field_of_string s, value_of_strings v)
+    Prepend (path_of_string s, value_of_strings v)
   | "map" :: s :: cmd ->
-    Map (field_of_string s, shell_command_of_string (String.concat " " cmd))
+    Map (path_of_string s, shell_command_of_string (String.concat " " cmd))
   | "filter" :: s :: cmd ->
-    Filter (field_of_string s, shell_command_of_string (String.concat " " cmd))
+    Filter (path_of_string s, shell_command_of_string (String.concat " " cmd))
   | "replace-item" :: s :: vs ->
     begin match value_of_strings ("[" :: vs @ ["]"]) with
-      | List (_, [v1; v2]) -> Replace_item (field_of_string s, v1, v2)
+      | List (_, [v1; v2]) -> Replace_item (path_of_string s, v1, v2)
       | _ ->
         failwith "replace-item expects 3 arguments: field name, expression to \
                   replace, and replacement"
     end
   | "add-replace-item" :: s :: vs ->
     begin match value_of_strings ("[" :: vs @ ["]"]) with
-      | List (_, [v1; v2]) -> Add_replace_item (field_of_string s, v1, v2)
+      | List (_, [v1; v2]) -> Add_replace_item (path_of_string s, v1, v2)
       | _ ->
         failwith "replace-item expects 3 arguments: field name, expression to \
                   replace, and replacement"
     end
   | "remove-item" :: s :: v ->
-    Remove_item (field_of_string s, value_of_strings v)
+    Remove_item (path_of_string s, value_of_strings v)
   | _ ->
     Printf.ksprintf failwith "Invalid command: %S" s
 
@@ -138,38 +135,38 @@ let string_of_command =
   let (!) f = fun () -> f in
   function
   | Get f ->
-    Printf.sprintf "get %a" !string_of_field f
+    Printf.sprintf "get %a" !string_of_path f
   | Field_list ->
     "field-list"
   | Field_items f ->
-    Printf.sprintf "field-items %a" !string_of_field f
+    Printf.sprintf "field-items %a" !string_of_path f
   | Get_section sec ->
-    Printf.sprintf "get-section %a" !string_of_section sec
+    Printf.sprintf "get-section %a" !string_of_path sec
   | Add (f, v) ->
-    Printf.sprintf "add %a %a" !string_of_field f !OpamPrinter.value v
+    Printf.sprintf "add %a %a" !string_of_path f !OpamPrinter.value v
   | Remove f ->
-    Printf.sprintf "remove %a" !string_of_field f
+    Printf.sprintf "remove %a" !string_of_path f
   | Replace (f, v) ->
-    Printf.sprintf "replace %a %a" !string_of_field f !OpamPrinter.value v
+    Printf.sprintf "replace %a %a" !string_of_path f !OpamPrinter.value v
   | Append (f, v) ->
-    Printf.sprintf "append %a %a" !string_of_field f !OpamPrinter.value v
+    Printf.sprintf "append %a %a" !string_of_path f !OpamPrinter.value v
   | Prepend (f, v) ->
-    Printf.sprintf "prepend %a %a" !string_of_field f !OpamPrinter.value v
+    Printf.sprintf "prepend %a %a" !string_of_path f !OpamPrinter.value v
   | Map (f, cmd) ->
-    Printf.sprintf "map %a %a" !string_of_field f !string_of_shell_command cmd
+    Printf.sprintf "map %a %a" !string_of_path f !string_of_shell_command cmd
   | Filter (f, cmd) ->
-    Printf.sprintf "filter %a %a" !string_of_field f
+    Printf.sprintf "filter %a %a" !string_of_path f
       !string_of_shell_command cmd
   | Replace_item (f, v1, v2) ->
-    Printf.sprintf "replace-item %a %a %a" !string_of_field f
+    Printf.sprintf "replace-item %a %a %a" !string_of_path f
       !OpamPrinter.value v1
       !OpamPrinter.value v2
   | Add_replace_item (f, v1, v2) ->
-    Printf.sprintf "add-replace-item %a %a %a" !string_of_field f
+    Printf.sprintf "add-replace-item %a %a %a" !string_of_path f
       !OpamPrinter.value v1
       !OpamPrinter.value v2
   | Remove_item (f, v) ->
-    Printf.sprintf "remove-item %a %a" !string_of_field f !OpamPrinter.value v
+    Printf.sprintf "remove-item %a %a" !string_of_path f !OpamPrinter.value v
 
 let is_extraction_command = function
   | Get _ | Field_list | Field_items _ | Get_section _ -> true
@@ -207,6 +204,20 @@ let arg_commands =
        (fun fmt cmd -> Format.pp_print_string fmt (string_of_command cmd)))
   in
   Arg.(value & pos_all cmd [] & info ~docv:"COMMAND" ~doc [])
+
+let string_of_channel ic =
+  let b = Buffer.create 4096 in
+  try while true do Buffer.add_channel b ic 4096 done; assert false
+  with End_of_file -> Buffer.contents b
+
+let shell_command cmd text =
+  let ic, oc as process = Unix.open_process cmd in
+  output_string oc text;
+  let s = string_of_channel ic in
+  match Unix.close_process process with
+  | Unix.WEXITED 0 -> Some s
+  | Unix.WSIGNALED i when i = Sys.sigint -> raise Sys.Break
+  | _ -> None
 
 let rec get_field fld = function
   | [] -> raise Not_found
@@ -270,48 +281,93 @@ let get_list = function
   | List (_, l) -> l
   | elt -> [elt]
 
-let list its = List (pos_null, its)
+let list = function
+  | [] -> None
+  | its -> Some (List (pos_null, its))
+
+let singleton x = List (pos_null, [x])
 
 let exec_command f cmd =
+  let contents = f.file_contents in
   let msg =
     match cmd with
-    | Get path -> Some (OpamPrinter.value (get_path path f.file_contents))
-    | Field_list -> assert false
-    | Field_items path -> assert false
-    | Get_section sec -> assert false
+    | Get path -> Some (OpamPrinter.value (get_path path contents))
+    | Field_list ->
+      let rec list_fields pfx = function
+        | Section (_, {section_kind; section_items; _}) :: r ->
+          list_fields (pfx^section_kind^".") section_items @
+          list_fields pfx r
+        | Variable (_, fld, _) :: r ->
+          (pfx ^ fld) :: list_fields pfx r
+        | [] -> []
+      in
+      let flds = list_fields "" contents in
+      Some (String.concat "\n" flds)
+    | Field_items path ->
+      let l = get_list (get_path path contents) in
+      let items = List.map OpamPrinter.value l in
+      Some (String.concat "\n" items)
+    | Get_section path ->
+      let rec get contents = function
+        | [] -> contents
+        | sec :: path -> get (get_section sec contents) path
+      in
+      Some (OpamPrinter.items (get contents path))
     | _ -> None
   in
   (match msg with Some m -> print_endline m | None -> ());
-  let contents = f.file_contents in
   let contents =
     match cmd with
     | Get _ | Field_list | Field_items _ | Get_section _ -> contents
     | Add (path, v) ->
       map_path ~absent:(fun () -> v)
         (fun _ -> Printf.ksprintf failwith "Field %s exists already"
-            (string_of_field path))
+            (string_of_path path))
         path contents
     | Remove path ->
       map_path (fun _ -> None) path contents
     | Replace (path, v) ->
       map_path (fun _ -> Some v) path contents
     | Append (path, v) ->
-      map_path ~absent:(fun () -> list [v])
-        (fun x -> Some (list (get_list x @ [v])))
+      map_path ~absent:(fun () -> singleton v)
+        (fun x -> list (get_list x @ [v]))
         path contents
     | Prepend (path, v) ->
-      map_path ~absent:(fun () -> list [v])
-        (fun x -> Some (list (v :: get_list x)))
+      map_path ~absent:(fun () -> singleton v)
+        (fun x -> list (v :: get_list x))
         path contents
-    | Map (path, cmd) -> assert false
-    | Filter (path, cmd) -> assert false
+    | Map (path, cmd) ->
+      map_path (fun x ->
+          get_list x |>
+          List.map (fun v ->
+              let s = OpamPrinter.value v in
+              match shell_command cmd s with
+              | None ->
+                Printf.eprintf "Error while running command %S on %S\n" cmd s;
+                v
+              | Some s ->
+                try OpamParser.value_of_string s
+                with Parsing.Parse_error ->
+                  Printf.eprintf
+                    "Error: command %S returned %S, which doesn't parse\n"
+                    cmd s;
+                  v) |>
+          list)
+        path contents
+    | Filter (path, cmd) ->
+      map_path (fun x ->
+          get_list x |>
+          List.filter
+            (fun v -> shell_command cmd (OpamPrinter.value v) <> None) |>
+          list)
+        path contents
     | Replace_item (path, v1, v2) ->
       let rec repl = function
         | [] -> []
         | x::r when x = v1 -> v2 :: r
         | x::r -> x :: repl r
       in
-      map_path (fun x -> Some (list (repl (get_list x))))
+      map_path (fun x -> list (repl (get_list x)))
         path contents
     | Add_replace_item (path, v1, v2) ->
       let rec repl = function
@@ -319,7 +375,7 @@ let exec_command f cmd =
         | x::r when x = v1 -> v2 :: r
         | x::r -> x :: repl r
       in
-      map_path (fun x -> Some (list (repl (get_list x))))
+      map_path (fun x -> list (repl (get_list x)))
         path contents
     | Remove_item (path, v) ->
       let rec rem = function
@@ -327,7 +383,7 @@ let exec_command f cmd =
         | x::r when x = v -> r
         | x::r -> x :: rem r
       in
-      map_path (fun x -> Some (list (rem (get_list x))))
+      map_path (fun x -> list (rem (get_list x)))
         path contents
   in
   {f with file_contents = contents}
@@ -401,5 +457,10 @@ let main_cmd_info =
     ~man
 
 let () =
-  let r = Term.eval (cmd, main_cmd_info) in
-  Term.exit r
+  Sys.catch_break true;
+  try
+    let r = Term.eval (cmd, main_cmd_info) in
+    Term.exit r
+  with Sys.Break ->
+    prerr_endline "Interrupted";
+    exit 130
