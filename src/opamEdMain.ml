@@ -11,34 +11,6 @@
 open OpamParserTypes
 open Cmdliner
 
-(** Commands
-
-    EXTRACTION:
-
-    get FIELD
-    field-list
-    field-items
-    get-section SECTION
-
-    EDITION:
-
-    add FIELD str
-    remove FIELD
-    replace FIELD str
-    append FIELD str
-    prepend FIELD str
-    map FIELD cmd
-    filter FIELD cmd
-    replace-item FIELD str str
-    add-replace-item FIELD str str
-
-    OPTIONS:
-
-    --file -f
-    --inplace -i
-    --normalise -n
-*)
-
 type path = string list
 type shell_command = string
 
@@ -395,75 +367,10 @@ let exec_command f cmd =
   in
   {f with file_contents = contents}
 
-let print_preserved txt orig f =
-  let pos_index =
-    let lines_index =
-      let rec aux acc s =
-        let until =
-          try Some (String.index_from s (List.hd acc) '\n')
-          with Not_found -> None
-        in
-        match until with
-        | Some until -> aux (until+1 :: acc) s
-        | None -> Array.of_list (List.rev acc)
-      in
-      aux [0] txt
-    in
-    fun (_file, li, col) -> lines_index.(li - 1) + col
-  in
-  let get_substring start_pos rest =
-    let start = pos_index start_pos in
-    let stop = match rest with
-      | (Section (pos,_) | Variable (pos,_,_)) :: _ -> pos_index pos - 1
-      | [] ->
-        let len = ref (String.length txt) in
-        while !len >= 1 && txt.[!len - 1] = '\n' do decr len done;
-        !len
-    in
-    String.sub txt start (stop - start)
-  in
-  let list_take f l =
-    let rec aux acc = function
-    | [] -> None, List.rev acc
-    | x::r ->
-      if f x then Some x, List.rev_append acc r
-      else aux (x::acc) r
-    in
-    aux [] l
-  in
-  let is_variable name = function
-    | Variable (_, name1, v1) -> name = name1
-    | _ -> false
-  in
-  let is_section name = function
-    | Section (_, {section_kind; _}) -> name = section_kind
-    | _ -> false
-  in
-  let rec aux acc f = function
-    | Variable (pos, name, v) :: r ->
-      (match list_take (is_variable name) f with
-       | Some (Variable (_, _, v1)), f when v = v1 ->
-         aux (get_substring pos r :: acc) f r
-       | Some item, f ->
-         aux (OpamPrinter.items [item] :: acc) f r
-       | None, f ->
-         aux acc f r)
-    | Section (pos, sec) :: r ->
-      (match list_take (is_section sec.section_kind) f with
-       | Some (Section (_, sec1)), f when sec = sec1 ->
-         aux (get_substring pos r :: acc) f r
-       | Some item, f ->
-         aux (OpamPrinter.items [item] :: acc) f r
-       | None, f -> aux acc f r)
-    | [] ->
-      List.rev_append acc [OpamPrinter.items f]
-  in
-  String.concat "\n" (aux [get_substring ("",1,0) orig] f orig) ^ "\n"
-
 let run files inplace normalise commands =
   let print txt orig f =
     match normalise with
-    | `Preserve -> print_preserved txt orig.file_contents f.file_contents
+    | `Preserve -> OpamPrinter.Preserved.items txt orig.file_contents f.file_contents
     | `Reformat -> OpamPrinter.opamfile f ^ "\n"
     | `Canonical -> OpamPrinter.Normalise.opamfile f
   in
