@@ -45,6 +45,7 @@ type command =
   | Add of path * value
   | Remove of path
   | Replace of path * value
+  | Add_replace of path * value
   | Append of path * value
   | Prepend of path * value
   | Map of path * shell_command
@@ -80,6 +81,8 @@ let command_of_string s =
     Remove (path_of_string s)
   | "replace" :: s :: v ->
     Replace (path_of_string s, value_of_strings v)
+  | "add-replace" :: s :: v ->
+    Add_replace (path_of_string s, value_of_strings v)
   | "append" :: s :: v ->
     Append (path_of_string s, value_of_strings v)
   | "prepend":: s :: v ->
@@ -124,6 +127,8 @@ let string_of_command =
     Printf.sprintf "remove %a" !string_of_path f
   | Replace (f, v) ->
     Printf.sprintf "replace %a %a" !string_of_path f !OpamPrinter.value v
+  | Add_replace (f, v) ->
+    Printf.sprintf "add-replace %a %a" !string_of_path f !OpamPrinter.value v
   | Append (f, v) ->
     Printf.sprintf "append %a %a" !string_of_path f !OpamPrinter.value v
   | Prepend (f, v) ->
@@ -314,6 +319,9 @@ let exec_command f cmd =
       map_path (fun _ -> None) path contents
     | Replace (path, v) ->
       map_path (fun _ -> Some v) path contents
+    | Add_replace (path, v) ->
+      map_path ~absent:(fun () -> v)
+        (fun _ -> Some v) path contents
     | Append (path, v) ->
       map_path ~absent:(fun () -> singleton v)
         (map_list (fun l -> l @ [v]))
