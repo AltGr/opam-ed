@@ -433,23 +433,59 @@ let man = [
   `S "ARGUMENTS";
   `S "COMMANDS";
   `P "A list of commands, each as one argument, can be specified on the \
-      command-line.";
-  `P "$(b,extraction commands) always print their results to stdout:";
-  `P "get FIELD";
-  `P "field-list";
-  `P "field-items";
-  `P "get-section SECTION";
+      command-line. $(i,FIELD) and $(i,SECTION) arguments can be specified as \
+      paths separated with dots for accessing in-section elements (e.g. \
+      $(i,section.field)).";
+  `P "$(b,extraction commands) always print their results to stdout, and don't \
+      modify the file:";
+  `I ("$(b,get) $(i,FIELD)",
+      "Print out the value of the named $(i,FIELD).");
+  `I ("$(b,field-list)",
+      "List the field names present in the input.");
+  `I ("$(b,field-items) $(i,FIELD)",
+      "Print out the items of $(i,FIELD), understood as a list, separated by \
+       newlines.");
+  `I ("$(b,get-section) $(i,SECTION)",
+      "Extract and print the contents of the given $(i,SECTION).");
   `P "$(b,edition commands) modify the contents, and write to stdout, or back \
       to the original file if $(b,--inplace) was specified:";
-  `P "add FIELD str";
-  `P "remove FIELD";
-  `P "replace FIELD str";
-  `P "append FIELD str";
-  `P "prepend FIELD str";
-  `P "map FIELD cmd";
-  `P "filter FIELD cmd";
-  `P "replace-item FIELD str str";
-  `P "add-replace-item FIELD str str";
+  `I ("$(b,add) $(i,FIELD) $(i,value)",
+      "Add the given $(i,FIELD), with the given contents, to the file, if it \
+       didn't exist already");
+  `I ("$(b,remove) $(i,FIELD)",
+      "Remove the given $(i,FIELD) from the file, if present.");
+  `I ("$(b,replace) $(i,FIELD) $(i,value)",
+      "Replace the contents of the given $(i,FIELD), if found, by the given \
+       value.");
+  `I ("$(b,add-replace) $(i,FIELD) $(i,value)",
+      "Replace the contents of the given $(i,FIELD) by the given value, adding \
+       the field if not present already. This is equivalent to the sequence \
+       'remove $(i,FIELD)' 'add $(i,FIELD) $(i,value)'");
+  `I ("$(b,append) $(i,FIELD) $(i,value)",
+      "Append the given value to the given $(i,FIELD), treated as a list. The \
+       field is created as a singleton if it didn't exist");
+  `I ("$(b,prepend) $(i,FIELD) $(i,value)",
+      "Prepend the given value to the given $(i,FIELD), treated as a list. The \
+       field is created as a singleton if it didn't exist");
+  `I ("$(b,map) $(i,FIELD) $(i,command)",
+      "Run the given shell command with each member of $(i,FIELD), treated as \
+       a list, as input, and replace it by the output of the command.");
+  `I ("$(b,filter) $(i,FIELD) $(i,cmd)",
+      "Run the given shell command with each member of $(i,FIELD), treated as \
+       a list, as input, and remove any member for which the command doesn't \
+       return 0.");
+  `I ("$(b,replace-item) $(i,FIELD) $(i,value) $(i,replacement)",
+      "Replace the first item of the contents of $(i,FIELD), treated as a \
+       list, that is equal to $(i,value), with $(i,replacement). Nothing \
+       happens if $(i,value) is not a member of the $(i,FIELD).");
+  `I ("$(b,add-replace-item) $(i,FIELD) $(i,value) $(i,replacement)",
+      "Replace the first item of the contents of $(i,FIELD), treated as a \
+       list, that is equal to $(i,value), with $(i,replacement). \
+       $(i,replacement) is appended to $(i,FIELD) if $(i,value) was not \
+       found.");
+  `I ("$(b,remove-item) $(i,FIELD) $(i,value)",
+      "Remove the first item of the contents of $(i,FIELD), treated as a \
+       list, that is equal to $(i,value), if any.");
 ]
 
 let main_cmd_info =
