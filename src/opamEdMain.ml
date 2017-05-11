@@ -382,13 +382,16 @@ let run files inplace normalise commands =
     | `Reformat -> OpamPrinter.opamfile f ^ "\n"
     | `Canonical -> OpamPrinter.Normalise.opamfile f
   in
+  let needs_reprint =
+    commands = [] || List.exists is_edition_command commands ||
+    inplace && normalise <> `Preserve
+  in
   if files = [] then
     try
       let txt = try string_of_channel stdin with Sys_error _ -> "" in
       let orig = OpamParser.string txt "/dev/stdin" in
       let f = List.fold_left exec_command orig commands in
-      if commands = [] || List.exists is_edition_command commands then
-        print_string (print txt orig f)
+      if needs_reprint then print_string (print txt orig f)
     with e ->
       fatal_exn e;
       Printf.eprintf "Error on input from stdin: %s\n"
@@ -407,6 +410,7 @@ let run files inplace normalise commands =
           in
           let orig = OpamParser.string txt file in
           let f = List.fold_left exec_command orig commands in
+          if not needs_reprint then ok else
           let s = print txt orig f in
           if inplace then
             let oc = open_out file in
