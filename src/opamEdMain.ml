@@ -293,11 +293,12 @@ let rec value_equals v1 v2 = match v1, v2 with
   | Ident (_, s1), Ident (_, s2) ->
     s1 = s2
   | List (_, vl1), List (_, vl2) ->
-    List.for_all2 value_equals vl1 vl2
+    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
   | Group (_, vl1), Group (_, vl2) ->
-    List.for_all2 value_equals vl1 vl2
+    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
   | Option (_, v1, vl1), Option (_, v2, vl2) ->
-    value_equals v1 v2 && List.for_all2 value_equals vl1 vl2
+    value_equals v1 v2 &&
+    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
   | Env_binding (_, v1, op1, vx1), Env_binding (_, v2, op2, vx2) ->
     op1 = op2 && value_equals v1 v2 && value_equals vx1 vx2
   | _ -> false
