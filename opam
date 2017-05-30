@@ -3,7 +3,7 @@ name: "opam-ed"
 version: "0.1"
 maintainer: "Louis Gesbert <louis.gesbert@ocamlpro.com>"
 authors: "Louis Gesbert <louis.gesbert@ocamlpro.com>"
-license: "GPL-2.1 with OCaml linking exception"
+license: "GPL-2.1"
 homepage: "https://github.com/AltGr/opam-ed"
 bug-reports: "https://github.com/AltGr/opam-ed/issues"
 depends: [
