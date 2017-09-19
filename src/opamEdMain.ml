@@ -278,6 +278,31 @@ let map_list f = function
 
 let singleton x = List (pos_null, [x])
 
+let rec value_equals v1 v2 = match v1, v2 with
+  | Bool (_, b1), Bool (_, b2) -> b1 = b2
+  | Int (_, i1), Int (_, i2) -> i1 = i2
+  | String (_, s1), String (_, s2) -> s1 = s2
+  | Relop (_, r1, va1, vb1), Relop (_, r2, va2, vb2) ->
+    r1 = r2 && value_equals va1 va2 && value_equals vb1 vb2
+  | Prefix_relop (_, r1, v1), Prefix_relop (_, r2, v2) ->
+    r1 = r2 && value_equals v1 v2
+  | Logop (_, l1, va1, vb1), Logop (_, l2, va2, vb2) ->
+    l1 = l2 && value_equals va1 va2 && value_equals vb1 vb2
+  | Pfxop (_, p1, v1), Pfxop (_, p2, v2) ->
+    p1 = p2 && value_equals v1 v2
+  | Ident (_, s1), Ident (_, s2) ->
+    s1 = s2
+  | List (_, vl1), List (_, vl2) ->
+    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
+  | Group (_, vl1), Group (_, vl2) ->
+    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
+  | Option (_, v1, vl1), Option (_, v2, vl2) ->
+    value_equals v1 v2 &&
+    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
+  | Env_binding (_, v1, op1, vx1), Env_binding (_, v2, op2, vx2) ->
+    op1 = op2 && value_equals v1 v2 && value_equals vx1 vx2
+  | _ -> false
+
 let exec_command f cmd =
   let contents = f.file_contents in
   let msg =
@@ -354,21 +379,21 @@ let exec_command f cmd =
     | Replace_item (path, v1, v2) ->
       let rec repl = function
         | [] -> []
-        | x::r when x = v1 -> v2 :: r
+        | x::r when value_equals x v1 -> v2 :: r
         | x::r -> x :: repl r
       in
       map_path (map_list repl) path contents
     | Add_replace_item (path, v1, v2) ->
       let rec repl = function
         | [] -> [v2]
-        | x::r when x = v1 -> v2 :: r
+        | x::r when value_equals x v1 -> v2 :: r
         | x::r -> x :: repl r
       in
       map_path (map_list repl) path contents
     | Remove_item (path, v) ->
       let rec rem = function
         | [] -> []
-        | x::r when x = v -> r
+        | x::r when value_equals x v -> r
         | x::r -> x :: rem r
       in
       map_path (map_list rem) path contents
@@ -382,13 +407,16 @@ let run files inplace normalise commands =
     | `Reformat -> OpamPrinter.opamfile f ^ "\n"
     | `Canonical -> OpamPrinter.Normalise.opamfile f
   in
+  let needs_reprint =
+    commands = [] || List.exists is_edition_command commands ||
+    inplace && normalise <> `Preserve
+  in
   if files = [] then
     try
       let txt = try string_of_channel stdin with Sys_error _ -> "" in
       let orig = OpamParser.string txt "/dev/stdin" in
       let f = List.fold_left exec_command orig commands in
-      if commands = [] || List.exists is_edition_command commands then
-        print_string (print txt orig f)
+      if needs_reprint then print_string (print txt orig f)
     with e ->
       fatal_exn e;
       Printf.eprintf "Error on input from stdin: %s\n"
@@ -407,6 +435,7 @@ let run files inplace normalise commands =
           in
           let orig = OpamParser.string txt file in
           let f = List.fold_left exec_command orig commands in
+          if not needs_reprint then ok else
           let s = print txt orig f in
           if inplace then
             let oc = open_out file in
