@@ -57,7 +57,7 @@ type command =
 let command_of_string s =
   let value_of_strings ss =
     let s = String.concat " " ss in
-    try OpamParser.value_of_string s
+    try OpamParser.value_from_string s
     with Parsing.Parse_error ->
       Printf.ksprintf failwith "Syntax error in value in %S" s
   in
@@ -364,7 +364,7 @@ let exec_command f cmd =
            Printf.eprintf "Error while running command %S on %S\n" cmd s;
            v
          | Some s ->
-           try OpamParser.value_of_string s
+           try OpamParser.value_from_string s
            with Parsing.Parse_error ->
              Printf.eprintf
                "Error: command %S returned %S, which doesn't parse\n"
