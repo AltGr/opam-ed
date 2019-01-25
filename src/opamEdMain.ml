@@ -518,7 +518,7 @@ let man = [
 ]
 
 let main_cmd_info =
-  Term.info "opam-ed" ~version:"0.1"
+  Term.info "opam-ed" ~version:"0.3"
     ~doc:"A command-line editor for the opam file format"
     ~man
 
