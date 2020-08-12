@@ -16,6 +16,9 @@ opam-ed.install: opam-ed opam-ed.1
 install: opam-ed opam-ed.install
 	opam-installer opam-ed.install
 
+tests: opam-ed
+	tests/run.sh
+
 clean:
 	rm -f src/*.cm* src/*.o
 
