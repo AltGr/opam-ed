@@ -13,7 +13,8 @@ depends: [
   "opam-file-format" {>= "2.0.0" & < "2.1"}
 ]
 build: [
-  make "COMP=ocamlc" {!ocaml:native}
+  [make "COMP=ocamlc" {!ocaml:native}]
+  [make "tests"] {with-test}
 ]
 dev-repo: "git+https://github.com/AltGr/opam-ed.git"
 synopsis: "Command-line edition tool for handling the opam file syntax"
