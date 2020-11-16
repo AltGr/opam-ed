@@ -1,6 +1,6 @@
 (**************************************************************************)
 (*                                                                        *)
-(*    Copyright 2016 OCamlPro                                             *)
+(*    Copyright 2016-2020 OCamlPro                                        *)
 (*                                                                        *)
 (*  All rights reserved. This file is distributed under the terms of the  *)
 (*  GNU Lesser General Public License version 2.1, with the special       *)
@@ -8,8 +8,11 @@
 (*                                                                        *)
 (**************************************************************************)
 
-open OpamParserTypes
+open OpamParserTypes.FullPos
 open Cmdliner
+
+module OpamParser = OpamParser.FullPos
+module OpamPrinter = OpamPrinter.FullPos
 
 type path = string list
 type shell_command = string
@@ -17,6 +20,13 @@ type shell_command = string
 let fatal_exn = function
   | Sys.Break as e -> raise e
   | _ -> ()
+
+let pos_null =
+  { filename = "";
+    start = -1, -1;
+    stop = -1, -1;
+  }
+let nullify_pos pelem = {pelem; pos = pos_null}
 
 let string_cut c s =
   try
@@ -92,15 +102,15 @@ let command_of_string s =
   | "filter" :: s :: cmd ->
     Filter (path_of_string s, shell_command_of_string (String.concat " " cmd))
   | "replace-item" :: s :: vs ->
-    begin match value_of_strings ("[" :: vs @ ["]"]) with
-      | List (_, [v1; v2]) -> Replace_item (path_of_string s, v1, v2)
+    begin match (value_of_strings ("[" :: vs @ ["]"])).pelem with
+      | List {pelem = [v1; v2]; _} -> Replace_item (path_of_string s, v1, v2)
       | _ ->
         failwith "replace-item expects 3 arguments: field name, expression to \
                   replace, and replacement"
     end
   | "add-replace-item" :: s :: vs ->
-    begin match value_of_strings ("[" :: vs @ ["]"]) with
-      | List (_, [v1; v2]) -> Add_replace_item (path_of_string s, v1, v2)
+    begin match (value_of_strings ("[" :: vs @ ["]"])).pelem with
+      | List {pelem = [v1; v2]; _} -> Add_replace_item (path_of_string s, v1, v2)
       | _ ->
         failwith "replace-item expects 3 arguments: field name, expression to \
                   replace, and replacement"
@@ -205,13 +215,14 @@ let shell_command cmd text =
 
 let rec get_field fld = function
   | [] -> raise Not_found
-  | Variable (_, f, v) :: _ when f = fld -> v
+  | {pelem = Variable (f, v); _} :: _ when f.pelem = fld -> v
   | _ :: r -> get_field fld r
 
 let rec get_section sec = function
   | [] -> raise Not_found
-  | Section (_, {section_kind; section_items}) :: _ when section_kind = sec ->
-    section_items
+  | {pelem = Section ({section_kind; section_items}); _} :: _
+    when section_kind.pelem = sec ->
+    section_items.pelem
   | _ :: r -> get_section sec r
 
 let rec get_path path items =
@@ -220,33 +231,33 @@ let rec get_path path items =
   | [fld] -> get_field fld items
   | sec::path -> get_path path (get_section sec items)
 
-let pos_null = "", -1, -1
-
 let rec map_field ?absent f fld = function
-  | Variable (pos, name, v) :: r when name = fld ->
-    (match f v with
+  | { pos; pelem = Variable (name, v)} :: r when name.pelem = fld ->
+    (match f v.pelem with
      | None -> r
-     | Some v -> Variable (pos, name, v) :: r)
+     | Some v -> { pos; pelem = Variable (name, nullify_pos v)} :: r)
   | x :: r -> x :: map_field ?absent f fld r
   | [] -> match absent with
     | None -> []
-    | Some v -> [Variable (pos_null, fld, v ())]
+    | Some v -> [nullify_pos @@ Variable (nullify_pos fld, nullify_pos @@ v ())]
 
 let rec map_section ?absent f sec = function
-  | Section (pos, ({section_kind; _} as s)) :: r when section_kind = sec ->
-    (match f s.section_items with
+  | { pos; pelem = Section ({section_kind; section_items} as s)} :: r
+    when section_kind.pelem = sec ->
+    (match f section_items.pelem with
      | None -> r
-     | Some section_items -> Section (pos, {s with section_items}) :: r)
+     | Some si ->
+       { pos; pelem =
+                Section {s with section_items = nullify_pos si}} :: r)
   | x :: r -> x :: map_section ?absent f sec r
   | [] -> match absent with
     | None -> []
     | Some v ->
-      let s = {
-        section_kind = sec;
-        section_name = None;
-        section_items = v ();
-      } in
-      [Section (pos_null, s)]
+      [ nullify_pos @@ Section
+          { section_kind = nullify_pos sec;
+            section_name = None;
+            section_items = nullify_pos @@ v ();
+          }]
 
 let rec map_path ?absent f path items =
   match path with
@@ -261,47 +272,23 @@ let rec map_path ?absent f path items =
       (fun it -> Some (map_path ?absent f path it))
       sec items
 
-let get_list = function
-  | List (_, l) -> l
-  | elt -> [elt]
+let get_list l =
+  match l.pelem with
+  | List l -> l.pelem
+  | elt -> [nullify_pos elt]
 
-let list ?(pos=pos_null) = function
+let list = function
   | [] -> None
-  | its -> Some (List (pos, its))
+  | its -> Some (List (nullify_pos its))
 
-let map_list f = function
-  | List (pos, l) -> list ~pos (f l)
+let rec map_list f = function
+  | List l -> list (f l.pelem)
   | elt ->
-    match f [elt] with
-    | [e] -> Some e
+    match f [nullify_pos elt] with
+    | [e] -> Some e.pelem
     | l -> list l
 
-let singleton x = List (pos_null, [x])
-
-let rec value_equals v1 v2 = match v1, v2 with
-  | Bool (_, b1), Bool (_, b2) -> b1 = b2
-  | Int (_, i1), Int (_, i2) -> i1 = i2
-  | String (_, s1), String (_, s2) -> s1 = s2
-  | Relop (_, r1, va1, vb1), Relop (_, r2, va2, vb2) ->
-    r1 = r2 && value_equals va1 va2 && value_equals vb1 vb2
-  | Prefix_relop (_, r1, v1), Prefix_relop (_, r2, v2) ->
-    r1 = r2 && value_equals v1 v2
-  | Logop (_, l1, va1, vb1), Logop (_, l2, va2, vb2) ->
-    l1 = l2 && value_equals va1 va2 && value_equals vb1 vb2
-  | Pfxop (_, p1, v1), Pfxop (_, p2, v2) ->
-    p1 = p2 && value_equals v1 v2
-  | Ident (_, s1), Ident (_, s2) ->
-    s1 = s2
-  | List (_, vl1), List (_, vl2) ->
-    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
-  | Group (_, vl1), Group (_, vl2) ->
-    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
-  | Option (_, v1, vl1), Option (_, v2, vl2) ->
-    value_equals v1 v2 &&
-    (try List.for_all2 value_equals vl1 vl2 with Invalid_argument _ -> false)
-  | Env_binding (_, v1, op1, vx1), Env_binding (_, v2, op2, vx2) ->
-    op1 = op2 && value_equals v1 v2 && value_equals vx1 vx2
-  | _ -> false
+let singleton x = List (nullify_pos [x])
 
 let exec_command f cmd =
   let contents = f.file_contents in
@@ -310,11 +297,11 @@ let exec_command f cmd =
     | Get path -> Some (OpamPrinter.value (get_path path contents))
     | Field_list ->
       let rec list_fields pfx = function
-        | Section (_, {section_kind; section_items; _}) :: r ->
-          list_fields (pfx^section_kind^".") section_items @
-          list_fields pfx r
-        | Variable (_, fld, _) :: r ->
-          (pfx ^ fld) :: list_fields pfx r
+        | { pelem = Section {section_kind; section_items; _}; _} :: r ->
+          list_fields (pfx ^ section_kind.pelem ^ ".") section_items.pelem
+          @ list_fields pfx r
+        | {pelem = Variable (fld, _); _} :: r ->
+          (pfx ^ fld.pelem) :: list_fields pfx r
         | [] -> []
       in
       let flds = list_fields "" contents in
@@ -336,17 +323,17 @@ let exec_command f cmd =
     match cmd with
     | Get _ | Field_list | Field_items _ | Get_section _ -> contents
     | Add (path, v) ->
-      map_path ~absent:(fun () -> v)
+      map_path ~absent:(fun () -> v.pelem)
         (fun _ -> Printf.ksprintf failwith "Field %s exists already"
             (string_of_path path))
         path contents
     | Remove path ->
       map_path (fun _ -> None) path contents
     | Replace (path, v) ->
-      map_path (fun _ -> Some v) path contents
+      map_path (fun _ -> Some v.pelem) path contents
     | Add_replace (path, v) ->
-      map_path ~absent:(fun () -> v)
-        (fun _ -> Some v) path contents
+      map_path ~absent:(fun () -> v.pelem)
+        (fun _ -> Some v.pelem) path contents
     | Append (path, v) ->
       map_path ~absent:(fun () -> singleton v)
         (map_list (fun l -> l @ [v]))
@@ -379,21 +366,21 @@ let exec_command f cmd =
     | Replace_item (path, v1, v2) ->
       let rec repl = function
         | [] -> []
-        | x::r when value_equals x v1 -> v2 :: r
+        | x::r when OpamPrinter.value_equals x v1 -> v2 :: r
         | x::r -> x :: repl r
       in
       map_path (map_list repl) path contents
     | Add_replace_item (path, v1, v2) ->
       let rec repl = function
         | [] -> [v2]
-        | x::r when value_equals x v1 -> v2 :: r
+        | x::r when OpamPrinter.value_equals x v1 -> v2 :: r
         | x::r -> x :: repl r
       in
       map_path (map_list repl) path contents
     | Remove_item (path, v) ->
       let rec rem = function
         | [] -> []
-        | x::r when value_equals x v -> r
+        | x::r when OpamPrinter.value_equals x v -> r
         | x::r -> x :: rem r
       in
       map_path (map_list rem) path contents
@@ -436,16 +423,16 @@ let run files inplace normalise commands =
           let orig = OpamParser.string txt file in
           let f = List.fold_left exec_command orig commands in
           if not needs_reprint then ok else
-          let s = print txt orig f in
-          if inplace then
-            let oc = open_out file in
-            output_string oc s;
-            close_out oc;
-            ok
-          else
-            (output_string stdout s;
-             flush stdout;
-             ok)
+            let s = print txt orig f in
+            if inplace then
+              let oc = open_out file in
+              output_string oc s;
+              close_out oc;
+              ok
+            else
+              (output_string stdout s;
+               flush stdout;
+               ok)
         with e ->
           fatal_exn e;
           Printf.eprintf "Error on file %s: %s\n" file
