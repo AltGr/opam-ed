@@ -1,0 +1,6 @@
+(rule
+ (alias runtest)
+ (deps
+  run.sh
+  (package opam-ed))
+ (action (bash "./run.sh")))

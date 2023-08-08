@@ -1,21 +1,18 @@
 opam-version: "2.0"
-name: "opam-ed"
 version: "0.3"
 maintainer: "Louis Gesbert <louis.gesbert@ocamlpro.com>"
 authors: "Louis Gesbert <louis.gesbert@ocamlpro.com>"
-license: "LGPL-2.1 with OCaml linking exception"
+license: "LGPL-2.1 WITH OCaml-LGPL-linking-exception"
 homepage: "https://github.com/AltGr/opam-ed"
 bug-reports: "https://github.com/AltGr/opam-ed/issues"
 depends: [
   "ocaml" {>= "4.03.0"}
-  "ocamlfind"
+  "dune" {>= "2.0"}
   "cmdliner" {>= "1.0.0"}
-  "opam-file-format" {>= "2.0.0" & < "2.1"}
+  "opam-file-format" {>= "2.0.0"}
 ]
-build: [
-  [make "COMP=ocamlc" {!ocaml:native}]
-  [make "tests"] {with-test}
-]
+build: ["dune" "build" "-p" name "-j" jobs]
+run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/AltGr/opam-ed.git"
 synopsis: "Command-line edition tool for handling the opam file syntax"
 description: """
