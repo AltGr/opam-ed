@@ -1,0 +1,12 @@
+(executable
+ (name opamEdMain)
+ (public_name opam-ed)
+ (libraries unix cmdliner opam-file-format))
+
+(rule
+ (target opam-ed.1)
+ (action
+  (with-stdout-to %{target}
+   (run opam-ed --help=groff))))
+
+(install (files opam-ed.1) (section man))

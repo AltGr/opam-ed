@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -ue
 #set -x
 
 echo "## Testing empty stdin"
-diff -u <(./opam-ed "add bin [\"foo\"]" <&-) <(echo "bin: [\"foo\"]")
+diff -u <(opam-ed "add bin [\"foo\"]" <&-) <(echo "bin: [\"foo\"]")
 
-file=tests/opam
+file=./opam
 if [ -e $file ]; then rm $file; fi
 touch $file
 
@@ -22,12 +22,12 @@ for field in 'opam-version "2.0"' \
   'bug-reports "url"' \
   'tags "comp"' \
   ; do
-  ./opam-ed "add $field" -f $file --inplace
+  opam-ed "add $field" -f $file --inplace
 done
 
 opam lint $file
 
-diff -u <(./opam-ed field-list -f $file) - << EOF
+diff -u <(opam-ed field-list -f $file) - << EOF
 opam-version
 name
 version
@@ -53,16 +53,16 @@ check-field () {
   echo "## Testing $3"
   case $op in
     existent)
-      diff -u <(./opam-ed "$in" -f $file | grep "^$field") <(echo "$out")
+      diff -u <(opam-ed "$in" -f $file | grep "^$field") <(echo "$out")
       ;;
     missing)
-      test ! `grep $field <(./opam-ed "$in" -f $file)`
+      test ! `grep $field <(opam-ed "$in" -f $file)`
       ;;
     first)
-      diff -u <(./opam-ed "$in" -f $file | head -1) <(echo "$out")
+      diff -u <(opam-ed "$in" -f $file | head -1) <(echo "$out")
       ;;
     last)
-      diff -u <(./opam-ed "$in" -f $file | tail -n 1) <(echo "$out")
+      diff -u <(opam-ed "$in" -f $file | tail -n 1) <(echo "$out")
       ;;
   esac
 }

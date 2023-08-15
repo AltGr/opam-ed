@@ -1,0 +1,2 @@
+; Make partial-match an error to make sure the tool matches the AST from opam-file-format
+(env (_ (flags :standard -w @8)))
