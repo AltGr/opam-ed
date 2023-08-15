@@ -74,7 +74,7 @@ one of the commands listed below. See `opam-ed --help` for more options.
 
 ### License
 
-Copyright 2017-2019 OCamlPro.
+Copyright 2017-2023 OCamlPro.
 opam-ed is distributed under the terms of the GNU General Public License
 version 2.1, with the special exception on linking describted in the file
 LICENSE.
